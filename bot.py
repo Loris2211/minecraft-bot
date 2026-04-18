@@ -1,11 +1,15 @@
+import os
 import discord
-import time
-import threading
+import asyncio
 from mcstatus import JavaServer
 
-TOKEN = "MTQ5NTEzOTQ0NzQ3NjU4NDU1OQ.GwF1Of.YVOW6hMVAaAgEb5M8mt_L4lc7NHbDGmQ9xCzTQ"
-CHANNEL_ID = 1495136829228322928  # remplace par l'ID de ton salon
+# 🔐 TOKEN sécurisé via Railway
+TOKEN = os.getenv("TOKEN")
 
+# 🎮 ID du salon Discord
+CHANNEL_ID = 1495136829228322928
+
+# 🌍 Serveur Minecraft
 server = JavaServer.lookup("confdesenclumes.ddns.net:25565")
 
 intents = discord.Intents.default()
@@ -13,30 +17,31 @@ client = discord.Client(intents=intents)
 
 last = None
 
-def monitor():
+async def monitor():
     global last
-    while True:
+    await client.wait_until_ready()
+
+    channel = client.get_channel(CHANNEL_ID)
+
+    while not client.is_closed():
         try:
             status = server.status()
             current = status.players.online
 
             if last is not None and current != last:
-                channel = client.get_channel(CHANNEL_ID)
                 if channel:
-                    client.loop.create_task(
-                        channel.send(f"🔔 Minecraft : {last} → {current}")
-                    )
+                    await channel.send(f"🔔 Minecraft : {last} → {current}")
 
             last = current
 
         except Exception as e:
             print("Erreur :", e)
 
-        time.sleep(30)
+        await asyncio.sleep(30)
 
 @client.event
 async def on_ready():
-    print("Bot connecté")
-    threading.Thread(target=monitor).start()
+    print(f"Bot connecté : {client.user}")
+    client.loop.create_task(monitor())
 
 client.run(TOKEN)
