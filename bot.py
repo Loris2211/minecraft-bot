@@ -1,6 +1,7 @@
 import os
 import discord
 import asyncio
+from datetime import datetime
 from mcstatus import JavaServer
 
 TOKEN = os.getenv("TOKEN")
@@ -14,9 +15,12 @@ client = discord.Client(intents=intents)
 last_players = set()
 channel = None
 
+# 🕛 anti double message quotidien
+last_daily = None
+
 
 async def monitor():
-    global last_players, channel
+    global last_players, channel, last_daily
 
     await client.wait_until_ready()
     channel = await client.fetch_channel(CHANNEL_ID)
@@ -38,14 +42,14 @@ async def monitor():
             joined = current_players - last_players
             left = last_players - current_players
 
-            # 🟢 JOINS + nombre actuel
+            # 🟢 JOINS
             if joined:
                 await channel.send(
                     f"🟢 **Joueur(s) connecté(s)** : {', '.join(joined)}\n"
                     f"👥 Joueurs actuellement : {current_count}"
                 )
 
-            # 🔴 LEAVES + nombre actuel
+            # 🔴 LEAVES
             if left:
                 await channel.send(
                     f"🔴 **Joueur(s) déconnecté(s)** : {', '.join(left)}\n"
@@ -53,6 +57,13 @@ async def monitor():
                 )
 
             last_players = current_players
+
+            # 🕛 MESSAGE QUOTIDIEN À 12H
+            now = datetime.now()
+
+            if now.hour == 12 and (last_daily is None or last_daily != now.date()):
+                await channel.send("🟢 Bot toujours actif (check quotidien)")
+                last_daily = now.date()
 
         except Exception as e:
             print("Erreur :", e)
