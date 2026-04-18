@@ -11,30 +11,31 @@ server = JavaServer.lookup("confdesenclumes.ddns.net:25565")
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
+tree = discord.app_commands.CommandTree(client)
 
 last_players = set()
 channel = None
 
 last_daily = None
-server_offline = False  # 🧠 état du serveur
+server_offline = False
+monitoring = False  # 🔥 état ON/OFF
 
 
 async def monitor():
-    global last_players, channel, last_daily, server_offline
+    global last_players, channel, last_daily, server_offline, monitoring
 
     await client.wait_until_ready()
     channel = await client.fetch_channel(CHANNEL_ID)
 
-    while not client.is_closed():
+    while monitoring:  # 🔥 dépend de /start /stop
         try:
             status = server.status()
 
-            # 🟢 serveur de nouveau en ligne
+            # 🟢 serveur revenu
             if server_offline:
                 await channel.send("🟢 Serveur Minecraft de nouveau en ligne")
                 server_offline = False
 
-            # 👥 joueurs actuels
             if status.players.sample:
                 current_players = {p.name for p in status.players.sample}
             else:
@@ -42,19 +43,15 @@ async def monitor():
 
             current_count = len(current_players)
 
-            print("Joueurs actuels =", current_players)
-
             joined = current_players - last_players
             left = last_players - current_players
 
-            # 🟢 JOINS
             if joined:
                 await channel.send(
                     f"🟢 **Joueur(s) connecté(s)** : {', '.join(joined)}\n"
                     f"👥 Joueurs actuellement : {current_count}"
                 )
 
-            # 🔴 LEAVES
             if left:
                 await channel.send(
                     f"🔴 **Joueur(s) déconnecté(s)** : {', '.join(left)}\n"
@@ -63,9 +60,8 @@ async def monitor():
 
             last_players = current_players
 
-            # 🕛 MESSAGE QUOTIDIEN
+            # 🕛 message quotidien
             now = datetime.now()
-
             if now.hour == 12 and (last_daily is None or last_daily != now.date()):
                 await channel.send("🟢 Bot toujours actif (check quotidien)")
                 last_daily = now.date()
@@ -73,7 +69,6 @@ async def monitor():
         except Exception as e:
             print("Erreur serveur Minecraft :", e)
 
-            # 🚨 serveur OFFLINE (1 seul message)
             if not server_offline:
                 await channel.send("🔴 Serveur Minecraft inaccessible ou hors ligne")
                 server_offline = True
@@ -81,14 +76,43 @@ async def monitor():
         await asyncio.sleep(10)
 
 
+# 🔥 COMMANDE /start
+@tree.command(name="start", description="Démarrer le monitoring Minecraft")
+async def start(interaction: discord.Interaction):
+    global monitoring
+
+    if monitoring:
+        await interaction.response.send_message("⚠️ Monitoring déjà actif", ephemeral=True)
+        return
+
+    monitoring = True
+    client.loop.create_task(monitor())
+
+    await interaction.response.send_message("🟢 Monitoring démarré")
+
+
+# 🔥 COMMANDE /stop
+@tree.command(name="stop", description="Arrêter le monitoring Minecraft")
+async def stop(interaction: discord.Interaction):
+    global monitoring
+
+    if not monitoring:
+        await interaction.response.send_message("⚠️ Monitoring déjà arrêté", ephemeral=True)
+        return
+
+    monitoring = False
+    await interaction.response.send_message("🔴 Monitoring arrêté")
+
+
 @client.event
 async def on_ready():
     print(f"Bot connecté : {client.user}")
-    client.loop.create_task(monitor())
+
+    await tree.sync()  # 🔥 important pour les slash commands
 
     try:
         ch = await client.fetch_channel(CHANNEL_ID)
-        await ch.send("✅ bot online")
+        await ch.send("✅ bot online (commands ready)")
     except Exception as e:
         print("Erreur on_ready :", e)
 
