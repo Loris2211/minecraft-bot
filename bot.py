@@ -5,7 +5,9 @@ from datetime import datetime
 from mcstatus import JavaServer
 
 TOKEN = os.getenv("TOKEN")
-CHANNEL_ID = 1495136829228322928
+
+CHANNEL_ID = 1495136829228322928  # ✅ TON SALON
+GUILD_ID = 1495136828364292246    # ❗️ METS ICI TON ID SERVEUR
 
 server = JavaServer.lookup("confdesenclumes.ddns.net:25565")
 
@@ -18,7 +20,7 @@ channel = None
 
 last_daily = None
 server_offline = False
-monitoring = False  # 🔥 état ON/OFF
+monitoring = False
 
 
 async def monitor():
@@ -76,7 +78,7 @@ async def monitor():
         await asyncio.sleep(10)
 
 
-# 🔥 COMMANDE /start
+# 🔥 /start
 @tree.command(name="start", description="Démarrer le monitoring Minecraft")
 async def start(interaction: discord.Interaction):
     global monitoring
@@ -91,7 +93,7 @@ async def start(interaction: discord.Interaction):
     await interaction.response.send_message("🟢 Monitoring démarré")
 
 
-# 🔥 COMMANDE /stop
+# 🔥 /stop
 @tree.command(name="stop", description="Arrêter le monitoring Minecraft")
 async def stop(interaction: discord.Interaction):
     global monitoring
@@ -104,7 +106,7 @@ async def stop(interaction: discord.Interaction):
     await interaction.response.send_message("🔴 Monitoring arrêté")
 
 
-# 🧪 COMMANDE /test
+# 🔥 /test
 @tree.command(name="test", description="Tester si le bot et le serveur fonctionnent")
 async def test(interaction: discord.Interaction):
     try:
@@ -132,7 +134,12 @@ async def test(interaction: discord.Interaction):
 async def on_ready():
     print(f"Bot connecté : {client.user}")
 
-    await tree.sync()
+    # ⚡ sync instantané des commandes
+    guild = discord.Object(id=GUILD_ID)
+    tree.copy_global_to(guild=guild)
+    await tree.sync(guild=guild)
+
+    print("Commandes synchronisées")
 
     try:
         ch = await client.fetch_channel(CHANNEL_ID)
