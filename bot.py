@@ -25,29 +25,31 @@ async def monitor():
         try:
             status = server.status()
 
-            # 🔥 récupération des joueurs actuels
+            # 👥 joueurs actuels
             if status.players.sample:
                 current_players = {p.name for p in status.players.sample}
             else:
                 current_players = set()
 
+            current_count = len(current_players)
+
             print("Joueurs actuels =", current_players)
 
-            # ➕ joueurs qui rejoignent
             joined = current_players - last_players
-            # ➖ joueurs qui partent
             left = last_players - current_players
 
-            # 🔔 message join
+            # 🟢 JOINS + nombre actuel
             if joined:
                 await channel.send(
-                    "🟢 **Joueur(s) connecté(s)** : " + ", ".join(joined)
+                    f"🟢 **Joueur(s) connecté(s)** : {', '.join(joined)}\n"
+                    f"👥 Joueurs actuellement : {current_count}"
                 )
 
-            # 🔴 message leave
+            # 🔴 LEAVES + nombre actuel
             if left:
                 await channel.send(
-                    "🔴 **Joueur(s) déconnecté(s)** : " + ", ".join(left)
+                    f"🔴 **Joueur(s) déconnecté(s)** : {', '.join(left)}\n"
+                    f"👥 Joueurs actuellement : {current_count}"
                 )
 
             last_players = current_players
