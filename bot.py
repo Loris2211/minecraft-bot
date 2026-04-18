@@ -11,12 +11,12 @@ server = JavaServer.lookup("confdesenclumes.ddns.net:25565")
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 
-last = None
+last_players = set()
 channel = None
 
 
 async def monitor():
-    global last, channel
+    global last_players, channel
 
     await client.wait_until_ready()
     channel = await client.fetch_channel(CHANNEL_ID)
@@ -24,15 +24,33 @@ async def monitor():
     while not client.is_closed():
         try:
             status = server.status()
-            current = status.players.online
 
-            print("Joueurs =", current)
+            # 🔥 récupération des joueurs actuels
+            if status.players.sample:
+                current_players = {p.name for p in status.players.sample}
+            else:
+                current_players = set()
 
-            # 🔔 message seulement si changement
-            if last is not None and current != last:
-                await channel.send(f"👥 Joueurs : {last} → {current}")
+            print("Joueurs actuels =", current_players)
 
-            last = current
+            # ➕ joueurs qui rejoignent
+            joined = current_players - last_players
+            # ➖ joueurs qui partent
+            left = last_players - current_players
+
+            # 🔔 message join
+            if joined:
+                await channel.send(
+                    "🟢 **Joueur(s) connecté(s)** : " + ", ".join(joined)
+                )
+
+            # 🔴 message leave
+            if left:
+                await channel.send(
+                    "🔴 **Joueur(s) déconnecté(s)** : " + ", ".join(left)
+                )
+
+            last_players = current_players
 
         except Exception as e:
             print("Erreur :", e)
