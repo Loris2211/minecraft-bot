@@ -27,7 +27,7 @@ async def monitor():
     await client.wait_until_ready()
     channel = await client.fetch_channel(CHANNEL_ID)
 
-    while monitoring:  # 🔥 dépend de /start /stop
+    while monitoring:
         try:
             status = server.status()
 
@@ -104,11 +104,35 @@ async def stop(interaction: discord.Interaction):
     await interaction.response.send_message("🔴 Monitoring arrêté")
 
 
+# 🧪 COMMANDE /test
+@tree.command(name="test", description="Tester si le bot et le serveur fonctionnent")
+async def test(interaction: discord.Interaction):
+    try:
+        status = server.status()
+
+        if status.players.sample:
+            players = [p.name for p in status.players.sample]
+        else:
+            players = []
+
+        await interaction.response.send_message(
+            f"🟢 Bot OK\n"
+            f"🌐 Serveur OK\n"
+            f"👥 Joueurs : {status.players.online}\n"
+            f"📋 Liste : {', '.join(players) if players else 'aucun'}"
+        )
+
+    except Exception:
+        await interaction.response.send_message(
+            "🟢 Bot OK\n🔴 Serveur Minecraft inaccessible"
+        )
+
+
 @client.event
 async def on_ready():
     print(f"Bot connecté : {client.user}")
 
-    await tree.sync()  # 🔥 important pour les slash commands
+    await tree.sync()
 
     try:
         ch = await client.fetch_channel(CHANNEL_ID)
