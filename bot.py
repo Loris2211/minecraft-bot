@@ -3,13 +3,9 @@ import discord
 import asyncio
 from mcstatus import JavaServer
 
-# 🔐 TOKEN (Railway variable d’environnement)
 TOKEN = os.getenv("TOKEN")
-
-# 🎮 Salon Discord
 CHANNEL_ID = 1495136829228322928
 
-# 🌍 Serveur Minecraft
 server = JavaServer.lookup("confdesenclumes.ddns.net:25565")
 
 intents = discord.Intents.default()
@@ -30,29 +26,30 @@ async def monitor():
             status = server.status()
             current = status.players.online
 
-            print("DEBUG CURRENT =", current)
+            print("Joueurs =", current)
 
-            await channel.send(f"DEBUG : {current}")
+            # 🔔 message seulement si changement
+            if last is not None and current != last:
+                await channel.send(f"👥 Joueurs : {last} → {current}")
+
+            last = current
 
         except Exception as e:
-            print("ERROR :", e)
+            print("Erreur :", e)
 
         await asyncio.sleep(30)
 
 
 @client.event
 async def on_ready():
-    print(f"✅ Bot connecté : {client.user}")
-
-    # lancement boucle
+    print(f"Bot connecté : {client.user}")
     client.loop.create_task(monitor())
 
-    # message test
     try:
         ch = await client.fetch_channel(CHANNEL_ID)
         await ch.send("✅ bot online")
     except Exception as e:
-        print("❌ on_ready error :", e)
+        print("Erreur on_ready :", e)
 
 
 client.run(TOKEN)
