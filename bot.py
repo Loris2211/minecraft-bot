@@ -23,32 +23,19 @@ async def monitor():
     global last, channel
 
     await client.wait_until_ready()
-
-    # 🔥 récupère le salon une seule fois
     channel = await client.fetch_channel(CHANNEL_ID)
 
     while not client.is_closed():
         try:
-            print("🔎 Check serveur Minecraft...")
+            status = server.status()
+            current = status.players.online
 
-            # 🧠 sécurité sur le status Minecraft
-            try:
-                status = server.status()
-                current = status.players.online
-                print("👥 Joueurs =", current)
+            print("DEBUG CURRENT =", current)
 
-            except Exception as e:
-                print("❌ MC ERROR :", e)
-                current = -1
-
-            # 📢 envoi si changement
-            if last is not None and current != last:
-                await channel.send(f"🔔 Joueurs : {last} → {current}")
-
-            last = current
+            await channel.send(f"DEBUG : {current}")
 
         except Exception as e:
-            print("❌ Monitor error :", e)
+            print("ERROR :", e)
 
         await asyncio.sleep(30)
 
