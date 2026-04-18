@@ -41,5 +41,6 @@ async def monitor():
 async def on_ready():
     print(f"Bot connecté : {client.user}")
     client.loop.create_task(monitor())
+    await client.get_channel(CHANNEL_ID).send("bot online")
 
 client.run(TOKEN)
