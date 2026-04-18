@@ -16,21 +16,19 @@ intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 
 last = None
-
 async def monitor():
     global last
     await client.wait_until_ready()
 
-    channel = client.get_channel(CHANNEL_ID)
-
     while not client.is_closed():
         try:
+            channel = await client.fetch_channel(CHANNEL_ID)
+
             status = server.status()
             current = status.players.online
 
             if last is not None and current != last:
-                if channel:
-                    await channel.send(f"🔔 Minecraft : {last} → {current}")
+                await channel.send(f"🔔 Discord : {last} → {current}")
 
             last = current
 
