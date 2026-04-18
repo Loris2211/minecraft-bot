@@ -3,7 +3,7 @@ import time
 import threading
 from mcstatus import JavaServer
 
-TOKEN = "MTQ5NTEzOTQ0NzQ3NjU4NDU1OQ.G7OMKp.tgQlapcUVVh1TFCthXHveCFCeLdBjGxogqo_uE"
+TOKEN = "MTQ5NTEzOTQ0NzQ3NjU4NDU1OQ.GwF1Of.YVOW6hMVAaAgEb5M8mt_L4lc7NHbDGmQ9xCzTQ"
 CHANNEL_ID = 1495136829228322928  # remplace par l'ID de ton salon
 
 server = JavaServer.lookup("confdesenclumes.ddns.net:25565")
