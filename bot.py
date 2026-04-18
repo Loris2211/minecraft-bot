@@ -78,7 +78,7 @@ async def monitor():
                 await channel.send("🔴 Serveur Minecraft inaccessible ou hors ligne")
                 server_offline = True
 
-        await asyncio.sleep(30)
+        await asyncio.sleep(10)
 
 
 @client.event
