@@ -107,8 +107,10 @@ async def stop(interaction: discord.Interaction):
 
 
 # 🔥 /test
-@tree.command(name="test", description="Tester si le bot et le serveur fonctionnent")
+@tree.command(name="test", description="Tester le bot, le serveur et le monitoring")
 async def test(interaction: discord.Interaction):
+    global monitoring
+
     try:
         status = server.status()
 
@@ -121,12 +123,15 @@ async def test(interaction: discord.Interaction):
             f"🟢 Bot OK\n"
             f"🌐 Serveur OK\n"
             f"👥 Joueurs : {status.players.online}\n"
-            f"📋 Liste : {', '.join(players) if players else 'aucun'}"
+            f"📋 Liste : {', '.join(players) if players else 'aucun'}\n"
+            f"📡 Monitoring : {'🟢 ON' if monitoring else '🔴 OFF'}"
         )
 
     except Exception:
         await interaction.response.send_message(
-            "🟢 Bot OK\n🔴 Serveur Minecraft inaccessible"
+            f"🟢 Bot OK\n"
+            f"🔴 Serveur Minecraft inaccessible\n"
+            f"📡 Monitoring : {'🟢 ON' if monitoring else '🔴 OFF'}"
         )
 
 
