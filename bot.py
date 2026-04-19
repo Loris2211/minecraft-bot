@@ -4,16 +4,16 @@ import asyncio
 import aiohttp
 from datetime import datetime
 from mcstatus import JavaServer
-from PIL import Image, ImageDraw
-from io import BytesIO
 
 TOKEN = os.getenv("TOKEN")
 
 CHANNEL_ID = 1495136829228322928      # monitoring
-MAP_CHANNEL_ID = 1495415786997678282   # map
+TRACK_CHANNEL_ID = 1495415786997678282  # positions joueurs
 GUILD_ID = 1495136828364292246    
 
 server = JavaServer.lookup("confdesenclumes.ddns.net:25565")
+
+SQUAREMAP_URL = "http://confdesenclumes.ddns.net:3001/tiles/players.json"
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
@@ -26,70 +26,24 @@ last_daily = None
 server_offline = False
 monitoring = False
 
-map_message = None
+track_message = None
 
-# =========================
-# 🔥 SQUAREMAP CONFIG
-# =========================
-BASE_URL = "http://confdesenclumes.ddns.net:3001/tiles/minecraft_overworld/0"
-
-TILES = {
-    "0_0": (1, 0),
-    "0_-1": (1, 1),
-    "-1_0": (0, 0),
-    "-1_-1": (0, 1),
-}
-
-TILE_SIZE = 128  # dépend Squaremap (souvent 128 ou 256)
+# 🔥 historique positions
+player_history = {}  # { "pseudo": [(x,z,time), ...] }
 
 
 # =========================
-# 🗺️ LOAD TILE
+# 📡 GET SQUAREMAP DATA
 # =========================
-async def load_tile(session, name):
-    url = f"{BASE_URL}/{name}.png"
-    async with session.get(url) as resp:
-        data = await resp.read()
-        return Image.open(BytesIO(data)).convert("RGBA")
-
-
-# =========================
-# 🗺️ BUILD MAP
-# =========================
-async def build_map(players):
+async def get_players():
     async with aiohttp.ClientSession() as session:
-        tiles = {}
-
-        for name in TILES:
-            tiles[name] = await load_tile(session, name)
-
-        base = Image.new("RGBA", (TILE_SIZE * 2, TILE_SIZE * 2))
-
-        for name, (x, y) in TILES.items():
-            base.paste(tiles[name], (x * TILE_SIZE, y * TILE_SIZE))
-
-        draw = ImageDraw.Draw(base)
-
-        # =========================
-        # 🔴 PLAYERS OVERLAY
-        # =========================
-        for p in players:
-            x = p.get("x", 0)
-            z = p.get("z", 0)
-
-            # ⚠️ SCALE À AJUSTER selon ton serveur
-            scale = 0.1
-
-            px = int(TILE_SIZE + x * scale)
-            pz = int(TILE_SIZE + z * scale)
-
-            draw.ellipse((px-3, pz-3, px+3, pz+3), fill="red")
-
-        return base
+        async with session.get(SQUAREMAP_URL) as resp:
+            data = await resp.json()
+            return data.get("players", [])
 
 
 # =========================
-# 👥 MONITOR MC SERVER
+# 👥 MONITOR SERVEUR
 # =========================
 async def monitor():
     global last_players, channel, last_daily, server_offline, monitoring
@@ -117,149 +71,160 @@ async def monitor():
 
             if joined:
                 await channel.send(
-                    f"🟢 Connecté(s): {', '.join(joined)}\n👥 {current_count} joueurs"
+                    f"🟢 **Connecté(s)** : {', '.join(joined)}\n"
+                    f"👥 Joueurs : {current_count}"
                 )
 
             if left:
                 await channel.send(
-                    f"🔴 Déconnecté(s): {', '.join(left)}\n👥 {current_count} joueurs"
+                    f"🔴 **Déconnecté(s)** : {', '.join(left)}\n"
+                    f"👥 Joueurs : {current_count}"
                 )
 
             last_players = current_players
 
+            # 🕛 check quotidien
+            now = datetime.now()
+            if now.hour == 12 and (last_daily is None or last_daily != now.date()):
+                await channel.send("🟢 Bot toujours actif (check quotidien)")
+                last_daily = now.date()
+
         except Exception as e:
+            print("Erreur serveur Minecraft :", e)
+
             if not server_offline:
                 await channel.send("🔴 Serveur Minecraft inaccessible")
                 server_offline = True
-            print("MC ERROR:", e)
 
         await asyncio.sleep(10)
 
 
 # =========================
-# 🗺️ MONITOR MAP
+# 📍 TRACK POSITIONS
 # =========================
-map_message = None
-
-SQUAREMAP_PLAYERS_URL = "http://confdesenclumes.ddns.net:3001/tiles/players.json"
-
-
-async def monitor_map():
-    global map_message, monitoring
+async def monitor_positions():
+    global track_message, monitoring
 
     await client.wait_until_ready()
-    map_channel = await client.fetch_channel(MAP_CHANNEL_ID)
+    track_channel = await client.fetch_channel(TRACK_CHANNEL_ID)
 
     while monitoring:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(SQUAREMAP_PLAYERS_URL) as resp:
-                    data = await resp.json()
+            players = await get_players()
 
-            players = data.get("players", [])
-
-            # 📝 TEXTE (tu voulais le garder)
-            content = "📡 **Joueurs (Squaremap)**\n\n"
+            content = "📍 **Tracking joueurs (live)**\n\n"
 
             if not players:
                 content += "Aucun joueur"
             else:
                 for p in players:
+                    name = p["name"]
+                    x = p["x"]
+                    y = p["y"]
+                    z = p["z"]
+
+                    # 🔥 sauvegarde historique
+                    if name not in player_history:
+                        player_history[name] = []
+
+                    player_history[name].append((x, z, datetime.now()))
+
+                    # 🔥 limite historique (50 dernières positions)
+                    if len(player_history[name]) > 50:
+                        player_history[name].pop(0)
+
+                    # 🔥 calcul distance totale
+                    distance = 0
+                    hist = player_history[name]
+
+                    for i in range(len(hist)-1):
+                        x1, z1, _ = hist[i]
+                        x2, z2, _ = hist[i+1]
+
+                        distance += ((x2-x1)**2 + (z2-z1)**2) ** 0.5
+
                     content += (
-                        f"🧑 {p['name']}\n"
-                        f"📍 {p['x']} / {p['y']} / {p['z']}\n"
-                        f"❤️ {p['health']} | 🛡 {p['armor']}\n\n"
+                        f"🧑 **{name}**\n"
+                        f"📍 {x} / {y} / {z}\n"
+                        f"📏 Distance parcourue : {int(distance)} blocs\n"
+                        f"🕒 Points enregistrés : {len(hist)}\n\n"
                     )
 
-            # 🗺️ IMAGE SIMPLE (pas les tiles pour l’instant → plus stable)
-            img = Image.new("RGB", (500, 500), (30, 30, 30))
-            draw = ImageDraw.Draw(img)
-
-            for p in players:
-                x = p["x"]
-                z = p["z"]
-
-                # ⚠️ scale simplifié
-                scale = 0.05
-
-                px = int(250 + x * scale)
-                pz = int(250 + z * scale)
-
-                draw.ellipse((px-5, pz-5, px+5, pz+5), fill="red")
-
-                draw.text((px+6, pz), p["name"], fill="white")
-
-            buffer = BytesIO()
-            img.save(buffer, format="PNG")
-            buffer.seek(0)
-
-            file = discord.File(buffer, filename="map.png")
-
-            if map_message is None:
-                map_message = await map_channel.send(content=content, file=file)
+            # ✏️ update message
+            if track_message is None:
+                track_message = await track_channel.send(content)
             else:
-                await map_message.edit(content=content, attachments=[file])
+                await track_message.edit(content=content)
 
         except Exception as e:
-            print("❌ MAP ERROR:", e)
+            print("Erreur tracking :", e)
 
         await asyncio.sleep(10)
 
 
 # =========================
-# /start
+# 🔥 COMMANDES
 # =========================
-@tree.command(name="start")
+@tree.command(name="start", description="Démarrer le monitoring")
 async def start(interaction: discord.Interaction):
     global monitoring
 
     if monitoring:
-        await interaction.response.send_message("⚠️ déjà actif", ephemeral=True)
+        await interaction.response.send_message("⚠️ Déjà actif", ephemeral=True)
         return
 
     monitoring = True
     client.loop.create_task(monitor())
-    client.loop.create_task(monitor_map())
+    client.loop.create_task(monitor_positions())
 
-    await interaction.response.send_message("🟢 monitoring ON")
+    await interaction.response.send_message("🟢 Monitoring ON")
 
 
-# =========================
-# /stop
-# =========================
-@tree.command(name="stop")
+@tree.command(name="stop", description="Arrêter le monitoring")
 async def stop(interaction: discord.Interaction):
     global monitoring
+
     monitoring = False
-    await interaction.response.send_message("🔴 monitoring OFF")
+    await interaction.response.send_message("🔴 Monitoring OFF")
 
 
-# =========================
-# /test
-# =========================
-@tree.command(name="test")
+@tree.command(name="test", description="Tester le bot")
 async def test(interaction: discord.Interaction):
+    global monitoring
+
     try:
         status = server.status()
+
         await interaction.response.send_message(
-            f"🟢 OK\n👥 {status.players.online} joueurs"
+            f"🟢 Bot OK\n"
+            f"🌐 Serveur OK\n"
+            f"👥 Joueurs : {status.players.online}\n"
+            f"📡 Monitoring : {'ON' if monitoring else 'OFF'}"
         )
+
     except:
-        await interaction.response.send_message("🔴 serveur offline")
+        await interaction.response.send_message(
+            f"🟢 Bot OK\n"
+            f"🔴 Serveur OFF\n"
+            f"📡 Monitoring : {'ON' if monitoring else 'OFF'}"
+        )
 
 
 # =========================
-# ON READY
+# 🚀 READY
 # =========================
 @client.event
 async def on_ready():
-    print(f"Bot connecté {client.user}")
+    print(f"Bot connecté : {client.user}")
 
     guild = discord.Object(id=GUILD_ID)
     tree.copy_global_to(guild=guild)
     await tree.sync(guild=guild)
 
-    print("commands synced")
+    print("Commandes synchronisées")
+
+    ch = await client.fetch_channel(CHANNEL_ID)
+    await ch.send("✅ Bot online")
 
 
 client.run(TOKEN)
