@@ -92,19 +92,26 @@ async def monitor():
 # 🔥 MONITOR MAP (NOUVEAU)
 async def monitor_map():
     await client.wait_until_ready()
+
     map_channel = await client.fetch_channel(MAP_CHANNEL_ID)
+    print("MAP CHANNEL OK =", map_channel)
 
     while monitoring:
         try:
             players = await get_squaremap_players()
 
+            print("SQUAREMAP RAW =", players)
+
             if not players:
+                print("Aucun joueur Squaremap")
                 await asyncio.sleep(10)
                 continue
 
-            msg = "📡 **Infos joueurs (Squaremap)**\n\n"
+            msg = "📡 Infos joueurs\n\n"
 
             for p in players:
+                print("PLAYER =", p)
+
                 name = p.get("name")
                 x = p.get("x")
                 y = p.get("y")
@@ -112,16 +119,12 @@ async def monitor_map():
                 health = p.get("health")
                 armor = p.get("armor")
 
-                msg += (
-                    f"🧑 **{name}**\n"
-                    f"📍 {x}/{y}/{z}\n"
-                    f"❤️ {health} | 🛡 {armor}\n\n"
-                )
+                msg += f"{name} {x}/{y}/{z} ❤️{health} 🛡{armor}\n\n"
 
             await map_channel.send(msg)
 
         except Exception as e:
-            print("Erreur Squaremap :", e)
+            print("❌ ERREUR MAP =", e)
 
         await asyncio.sleep(10)
 
