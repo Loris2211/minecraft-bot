@@ -91,14 +91,12 @@ async def monitor():
 
 # 🔥 MONITOR MAP (NOUVEAU)
 async def monitor_map():
-    global map_message
+    global map_message, monitoring
 
     await client.wait_until_ready()
     map_channel = await client.fetch_channel(MAP_CHANNEL_ID)
 
-    # 🔥 créer un message une seule fois
-    if map_message is None:
-        map_message = await map_channel.send("📡 Initialisation des données joueurs...")
+    map_message = None  # 🔥 reset propre au démarrage de la boucle
 
     while monitoring:
         try:
@@ -123,11 +121,21 @@ async def monitor_map():
                         f"❤️ {health} | 🛡 {armor}\n\n"
                     )
 
-            # 🔥 EDIT du message au lieu d’en envoyer un nouveau
-            await map_message.edit(content=content)
+            # 🔥 créer le message si besoin
+            if map_message is None:
+                map_message = await map_channel.send(content)
+            else:
+                await map_message.edit(content=content)
 
         except Exception as e:
             print("❌ ERREUR MAP =", e)
+
+            # 🔥 important : éviter blocage silencieux
+            if map_message:
+                try:
+                    await map_message.edit(content=f"⚠️ Erreur Squaremap : {e}")
+                except:
+                    pass
 
         await asyncio.sleep(10)
 
