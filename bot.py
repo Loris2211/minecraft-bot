@@ -1,15 +1,19 @@
 import os
 import discord
 import asyncio
+import aiohttp
 from datetime import datetime
 from mcstatus import JavaServer
 
 TOKEN = os.getenv("TOKEN")
 
-CHANNEL_ID = 1495136829228322928  # ✅ TON SALON
-GUILD_ID = 1495136828364292246    # ❗️ METS ICI TON ID SERVEUR
+CHANNEL_ID = 1495136829228322928      # monitoring
+MAP_CHANNEL_ID = 1495415786997678282   # 🔥 A REMPLACER (nouveau salon)
+GUILD_ID = 1495136828364292246    
 
 server = JavaServer.lookup("confdesenclumes.ddns.net:25565")
+
+SQUAREMAP_URL = "http://confdesenclumes.ddns.net:3001/players.json"
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
@@ -23,6 +27,15 @@ server_offline = False
 monitoring = False
 
 
+# 🔥 Récup données Squaremap
+async def get_squaremap_players():
+    async with aiohttp.ClientSession() as session:
+        async with session.get(SQUAREMAP_URL) as resp:
+            data = await resp.json()
+            return data.get("players", [])
+
+
+# 🔥 MONITOR SERVEUR (inchangé)
 async def monitor():
     global last_players, channel, last_daily, server_offline, monitoring
 
@@ -33,7 +46,6 @@ async def monitor():
         try:
             status = server.status()
 
-            # 🟢 serveur revenu
             if server_offline:
                 await channel.send("🟢 Serveur Minecraft de nouveau en ligne")
                 server_offline = False
@@ -62,7 +74,6 @@ async def monitor():
 
             last_players = current_players
 
-            # 🕛 message quotidien
             now = datetime.now()
             if now.hour == 12 and (last_daily is None or last_daily != now.date()):
                 await channel.send("🟢 Bot toujours actif (check quotidien)")
@@ -78,6 +89,43 @@ async def monitor():
         await asyncio.sleep(10)
 
 
+# 🔥 MONITOR MAP (NOUVEAU)
+async def monitor_map():
+    await client.wait_until_ready()
+    map_channel = await client.fetch_channel(MAP_CHANNEL_ID)
+
+    while monitoring:
+        try:
+            players = await get_squaremap_players()
+
+            if not players:
+                await asyncio.sleep(10)
+                continue
+
+            msg = "📡 **Infos joueurs (Squaremap)**\n\n"
+
+            for p in players:
+                name = p.get("name")
+                x = p.get("x")
+                y = p.get("y")
+                z = p.get("z")
+                health = p.get("health")
+                armor = p.get("armor")
+
+                msg += (
+                    f"🧑 **{name}**\n"
+                    f"📍 {x}/{y}/{z}\n"
+                    f"❤️ {health} | 🛡 {armor}\n\n"
+                )
+
+            await map_channel.send(msg)
+
+        except Exception as e:
+            print("Erreur Squaremap :", e)
+
+        await asyncio.sleep(10)
+
+
 # 🔥 /start
 @tree.command(name="start", description="Démarrer le monitoring Minecraft")
 async def start(interaction: discord.Interaction):
@@ -89,6 +137,7 @@ async def start(interaction: discord.Interaction):
 
     monitoring = True
     client.loop.create_task(monitor())
+    client.loop.create_task(monitor_map())  # 🔥 ajouté
 
     await interaction.response.send_message("🟢 Monitoring démarré")
 
@@ -106,7 +155,7 @@ async def stop(interaction: discord.Interaction):
     await interaction.response.send_message("🔴 Monitoring arrêté")
 
 
-# 🔥 /test
+# 🔥 /test (inchangé)
 @tree.command(name="test", description="Tester le bot, le serveur et le monitoring")
 async def test(interaction: discord.Interaction):
     global monitoring
@@ -139,7 +188,6 @@ async def test(interaction: discord.Interaction):
 async def on_ready():
     print(f"Bot connecté : {client.user}")
 
-    # ⚡ sync instantané des commandes
     guild = discord.Object(id=GUILD_ID)
     tree.copy_global_to(guild=guild)
     await tree.sync(guild=guild)
