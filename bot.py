@@ -139,6 +139,11 @@ async def monitor():
 # =========================
 # 🗺️ MONITOR MAP
 # =========================
+map_message = None
+
+SQUAREMAP_PLAYERS_URL = "http://confdesenclumes.ddns.net:3001/tiles/players.json"
+
+
 async def monitor_map():
     global map_message, monitoring
 
@@ -147,19 +152,42 @@ async def monitor_map():
 
     while monitoring:
         try:
-            status = server.status()
+            async with aiohttp.ClientSession() as session:
+                async with session.get(SQUAREMAP_PLAYERS_URL) as resp:
+                    data = await resp.json()
 
-            players = []
+            players = data.get("players", [])
 
-            if status.players.sample:
-                for p in status.players.sample:
-                    players.append({
-                        "name": p.name,
-                        "x": 0,
-                        "z": 0
-                    })
+            # 📝 TEXTE (tu voulais le garder)
+            content = "📡 **Joueurs (Squaremap)**\n\n"
 
-            img = await build_map(players)
+            if not players:
+                content += "Aucun joueur"
+            else:
+                for p in players:
+                    content += (
+                        f"🧑 {p['name']}\n"
+                        f"📍 {p['x']} / {p['y']} / {p['z']}\n"
+                        f"❤️ {p['health']} | 🛡 {p['armor']}\n\n"
+                    )
+
+            # 🗺️ IMAGE SIMPLE (pas les tiles pour l’instant → plus stable)
+            img = Image.new("RGB", (500, 500), (30, 30, 30))
+            draw = ImageDraw.Draw(img)
+
+            for p in players:
+                x = p["x"]
+                z = p["z"]
+
+                # ⚠️ scale simplifié
+                scale = 0.05
+
+                px = int(250 + x * scale)
+                pz = int(250 + z * scale)
+
+                draw.ellipse((px-5, pz-5, px+5, pz+5), fill="red")
+
+                draw.text((px+6, pz), p["name"], fill="white")
 
             buffer = BytesIO()
             img.save(buffer, format="PNG")
@@ -168,14 +196,14 @@ async def monitor_map():
             file = discord.File(buffer, filename="map.png")
 
             if map_message is None:
-                map_message = await map_channel.send(file=file)
+                map_message = await map_channel.send(content=content, file=file)
             else:
-                await map_message.edit(content="🗺️ Map mise à jour", attachments=[file])
+                await map_message.edit(content=content, attachments=[file])
 
         except Exception as e:
-            print("MAP ERROR:", e)
+            print("❌ MAP ERROR:", e)
 
-        await asyncio.sleep(20)
+        await asyncio.sleep(10)
 
 
 # =========================
