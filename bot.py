@@ -102,64 +102,39 @@ async def monitor():
 # =========================
 # 📍 TRACK POSITIONS
 # =========================
-async def monitor_positions():
-    global track_message, monitoring
+for p in players:
+    name = p["name"]
+    x = p["x"]
+    y = p["y"]
+    z = p["z"]
+    health = p.get("health", "?")
+    armor = p.get("armor", "?")
 
-    await client.wait_until_ready()
-    track_channel = await client.fetch_channel(TRACK_CHANNEL_ID)
+    # 🔥 historique
+    if name not in player_history:
+        player_history[name] = []
 
-    while monitoring:
-        try:
-            players = await get_players()
+    player_history[name].append((x, z, datetime.now()))
 
-            content = "📍 **Tracking joueurs (live)**\n\n"
+    if len(player_history[name]) > 50:
+        player_history[name].pop(0)
 
-            if not players:
-                content += "Aucun joueur"
-            else:
-                for p in players:
-                    name = p["name"]
-                    x = p["x"]
-                    y = p["y"]
-                    z = p["z"]
+    # 📏 distance
+    distance = 0
+    hist = player_history[name]
 
-                    # 🔥 sauvegarde historique
-                    if name not in player_history:
-                        player_history[name] = []
+    for i in range(len(hist)-1):
+        x1, z1, _ = hist[i]
+        x2, z2, _ = hist[i+1]
+        distance += ((x2-x1)**2 + (z2-z1)**2) ** 0.5
 
-                    player_history[name].append((x, z, datetime.now()))
-
-                    # 🔥 limite historique (50 dernières positions)
-                    if len(player_history[name]) > 50:
-                        player_history[name].pop(0)
-
-                    # 🔥 calcul distance totale
-                    distance = 0
-                    hist = player_history[name]
-
-                    for i in range(len(hist)-1):
-                        x1, z1, _ = hist[i]
-                        x2, z2, _ = hist[i+1]
-
-                        distance += ((x2-x1)**2 + (z2-z1)**2) ** 0.5
-
-                    content += (
-                        f"🧑 **{name}**\n"
-                        f"📍 {x} / {y} / {z}\n"
-                        f"📏 Distance parcourue : {int(distance)} blocs\n"
-                        f"🕒 Points enregistrés : {len(hist)}\n\n"
-                    )
-
-            # ✏️ update message
-            if track_message is None:
-                track_message = await track_channel.send(content)
-            else:
-                await track_message.edit(content=content)
-
-        except Exception as e:
-            print("Erreur tracking :", e)
-
-        await asyncio.sleep(10)
+    content += (
+        f"🧑 **{name}**\n"
+        f"📍 {x} / {y} / {z}\n"
+        f"❤️ {health} | 🛡 {armor}\n"
+        f"📏 Distance : {int(distance)} blocs\n"
+        f"🕒 Points : {len(hist)}\n\n"
+    )
 
 
 # =========================
