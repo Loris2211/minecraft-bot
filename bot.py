@@ -7,8 +7,8 @@ from mcstatus import JavaServer
 
 TOKEN = os.getenv("TOKEN")
 
-CHANNEL_ID = 1495136829228322928      # monitoring
-TRACK_CHANNEL_ID = 1495415786997678282  # positions joueurs
+CHANNEL_ID = 1495136829228322928
+TRACK_CHANNEL_ID = 1495415786997678282
 GUILD_ID = 1495136828364292246    
 
 server = JavaServer.lookup("confdesenclumes.ddns.net:25565")
@@ -29,7 +29,7 @@ monitoring = False
 track_message = None
 
 # 🔥 historique positions
-player_history = {}  # { "pseudo": [(x,z,time), ...] }
+player_history = {}
 
 
 # =========================
@@ -40,6 +40,20 @@ async def get_players():
         async with session.get(SQUAREMAP_URL) as resp:
             data = await resp.json()
             return data.get("players", [])
+
+
+# =========================
+# 🌍 CONVERT WORLD NAME
+# =========================
+def get_world_name(world):
+    if world == "minecraft_overworld":
+        return "🌍 Overworld"
+    elif world == "minecraft_the_nether":
+        return "🔥 Nether"
+    elif world == "minecraft_the_end":
+        return "🌌 End"
+    else:
+        return f"❓ {world}"
 
 
 # =========================
@@ -110,7 +124,7 @@ async def monitor_positions():
 
     while monitoring:
         try:
-            players = await get_players()  # ✅ IMPORTANT
+            players = await get_players()
 
             content = "📍 **Tracking joueurs (live)**\n\n"
 
@@ -124,6 +138,7 @@ async def monitor_positions():
                     z = p["z"]
                     health = p.get("health", "?")
                     armor = p.get("armor", "?")
+                    world = get_world_name(p.get("world", "unknown"))
 
                     # 🔥 historique
                     if name not in player_history:
@@ -138,13 +153,14 @@ async def monitor_positions():
                     distance = 0
                     hist = player_history[name]
 
-                    for i in range(len(hist)-1):
+                    for i in range(len(hist) - 1):
                         x1, z1, _ = hist[i]
-                        x2, z2, _ = hist[i+1]
-                        distance += ((x2-x1)**2 + (z2-z1)**2) ** 0.5
+                        x2, z2, _ = hist[i + 1]
+                        distance += ((x2 - x1)**2 + (z2 - z1)**2) ** 0.5
 
                     content += (
                         f"🧑 **{name}**\n"
+                        f"🌍 Monde : {world}\n"
                         f"📍 {x} / {y} / {z}\n"
                         f"❤️ {health} | 🛡 {armor}\n"
                         f"📏 Distance : {int(distance)} blocs\n"
