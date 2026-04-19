@@ -13,7 +13,7 @@ GUILD_ID = 1495136828364292246
 
 server = JavaServer.lookup("confdesenclumes.ddns.net:25565")
 
-SQUAREMAP_URL = "http://confdesenclumes.ddns.net:3001/players.json"
+SQUAREMAP_URL = "http://confdesenclumes.ddns.net:3001/tiles/players.json"
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
