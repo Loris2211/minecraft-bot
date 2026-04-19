@@ -91,43 +91,45 @@ async def monitor():
 
 # 🔥 MONITOR MAP (NOUVEAU)
 async def monitor_map():
-    await client.wait_until_ready()
+    global map_message
 
+    await client.wait_until_ready()
     map_channel = await client.fetch_channel(MAP_CHANNEL_ID)
-    print("MAP CHANNEL OK =", map_channel)
+
+    # 🔥 créer un message une seule fois
+    if map_message is None:
+        map_message = await map_channel.send("📡 Initialisation des données joueurs...")
 
     while monitoring:
         try:
             players = await get_squaremap_players()
 
-            print("SQUAREMAP RAW =", players)
-
             if not players:
-                print("Aucun joueur Squaremap")
-                await asyncio.sleep(10)
-                continue
+                content = "📡 Aucun joueur détecté"
+            else:
+                content = "📡 **Joueurs en ligne**\n\n"
 
-            msg = "📡 Infos joueurs\n\n"
+                for p in players:
+                    name = p.get("name")
+                    x = p.get("x")
+                    y = p.get("y")
+                    z = p.get("z")
+                    health = p.get("health")
+                    armor = p.get("armor")
 
-            for p in players:
-                print("PLAYER =", p)
+                    content += (
+                        f"🧑 **{name}**\n"
+                        f"📍 {x}/{y}/{z}\n"
+                        f"❤️ {health} | 🛡 {armor}\n\n"
+                    )
 
-                name = p.get("name")
-                x = p.get("x")
-                y = p.get("y")
-                z = p.get("z")
-                health = p.get("health")
-                armor = p.get("armor")
-
-                msg += f"{name} {x}/{y}/{z} ❤️{health} 🛡{armor}\n\n"
-
-            await map_channel.send(msg)
+            # 🔥 EDIT du message au lieu d’en envoyer un nouveau
+            await map_message.edit(content=content)
 
         except Exception as e:
             print("❌ ERREUR MAP =", e)
 
         await asyncio.sleep(10)
-
 
 # 🔥 /start
 @tree.command(name="start", description="Démarrer le monitoring Minecraft")
