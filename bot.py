@@ -2,7 +2,7 @@ import os
 import discord
 import asyncio
 import aiohttp
-from datetime import datetime
+from datetime import datetime, date
 from mcstatus import JavaServer
 
 TOKEN = os.getenv("TOKEN")
@@ -28,8 +28,10 @@ monitoring = False
 
 track_message = None
 
-# 🔥 historique positions
+# 🔥 historique positions + distance journalière
 player_history = {}
+player_daily_distance = {}
+current_day = date.today()
 
 
 # =========================
@@ -43,7 +45,7 @@ async def get_players():
 
 
 # =========================
-# 🌍 CONVERT WORLD NAME
+# 🌍 WORLD NAME
 # =========================
 def get_world_name(world):
     if world == "minecraft_overworld":
@@ -52,8 +54,16 @@ def get_world_name(world):
         return "🔥 Nether"
     elif world == "minecraft_the_end":
         return "🌌 End"
-    else:
-        return f"❓ {world}"
+    return f"❓ {world}"
+
+
+# =========================
+# ⏰ RESET JOURNALIER
+# =========================
+def reset_daily():
+    global player_history, player_daily_distance
+    player_history = {}
+    player_daily_distance = {}
 
 
 # =========================
@@ -73,31 +83,19 @@ async def monitor():
                 await channel.send("🟢 Serveur Minecraft de nouveau en ligne")
                 server_offline = False
 
-            if status.players.sample:
-                current_players = {p.name for p in status.players.sample}
-            else:
-                current_players = set()
-
+            current_players = {p.name for p in (status.players.sample or [])}
             current_count = len(current_players)
 
             joined = current_players - last_players
             left = last_players - current_players
 
             if joined:
-                await channel.send(
-                    f"🟢 **Connecté(s)** : {', '.join(joined)}\n"
-                    f"👥 Joueurs : {current_count}"
-                )
-
+                await channel.send(f"🟢 Connecté(s) : {', '.join(joined)}")
             if left:
-                await channel.send(
-                    f"🔴 **Déconnecté(s)** : {', '.join(left)}\n"
-                    f"👥 Joueurs : {current_count}"
-                )
+                await channel.send(f"🔴 Déconnecté(s) : {', '.join(left)}")
 
             last_players = current_players
 
-            # 🕛 check quotidien
             now = datetime.now()
             if now.hour == 12 and (last_daily is None or last_daily != now.date()):
                 await channel.send("🟢 Bot toujours actif (check quotidien)")
@@ -105,7 +103,6 @@ async def monitor():
 
         except Exception as e:
             print("Erreur serveur Minecraft :", e)
-
             if not server_offline:
                 await channel.send("🔴 Serveur Minecraft inaccessible")
                 server_offline = True
@@ -114,60 +111,62 @@ async def monitor():
 
 
 # =========================
-# 📍 TRACK POSITIONS
+# 📍 TRACK POSITIONS + DISTANCE JOURNALIÈRE
 # =========================
 async def monitor_positions():
-    global track_message, monitoring
+    global track_message, monitoring, current_day
 
     await client.wait_until_ready()
     track_channel = await client.fetch_channel(TRACK_CHANNEL_ID)
 
     while monitoring:
         try:
+            # 🔥 reset jour
+            if date.today() != current_day:
+                current_day = date.today()
+                reset_daily()
+
             players = await get_players()
 
-            content = "📍 **Tracking joueurs (live)**\n\n"
+            content = "📍 **Tracking joueurs (jour)**\n\n"
 
             if not players:
                 content += "Aucun joueur"
             else:
                 for p in players:
                     name = p["name"]
-                    x = p["x"]
-                    y = p["y"]
-                    z = p["z"]
+                    x, y, z = p["x"], p["y"], p["z"]
                     health = p.get("health", "?")
                     armor = p.get("armor", "?")
                     world = get_world_name(p.get("world", "unknown"))
 
-                    # 🔥 historique
+                    # init
                     if name not in player_history:
                         player_history[name] = []
+                        player_daily_distance[name] = 0
 
-                    player_history[name].append((x, z, datetime.now()))
-
-                    if len(player_history[name]) > 50:
-                        player_history[name].pop(0)
-
-                    # 📏 distance
-                    distance = 0
                     hist = player_history[name]
 
-                    for i in range(len(hist) - 1):
-                        x1, z1, _ = hist[i]
-                        x2, z2, _ = hist[i + 1]
-                        distance += ((x2 - x1)**2 + (z2 - z1)**2) ** 0.5
+                    # ajouter point
+                    hist.append((x, z))
+
+                    if len(hist) > 100:
+                        hist.pop(0)
+
+                    # calcul distance (incremental propre)
+                    if len(hist) >= 2:
+                        x1, z1 = hist[-2]
+                        x2, z2 = hist[-1]
+                        player_daily_distance[name] += ((x2 - x1)**2 + (z2 - z1)**2) ** 0.5
 
                     content += (
                         f"🧑 **{name}**\n"
-                        f"🌍 Monde : {world}\n"
+                        f"🌍 {world}\n"
                         f"📍 {x} / {y} / {z}\n"
                         f"❤️ {health} | 🛡 {armor}\n"
-                        f"📏 Distance : {int(distance)} blocs\n"
-                        f"🕒 Points : {len(hist)}\n\n"
+                        f"📏 Distance jour : {int(player_daily_distance[name])} blocs\n\n"
                     )
 
-            # ✏️ update message
             if track_message is None:
                 track_message = await track_channel.send(content)
             else:
@@ -180,9 +179,9 @@ async def monitor_positions():
 
 
 # =========================
-# 🔥 COMMANDES
+# COMMANDES
 # =========================
-@tree.command(name="start", description="Démarrer le monitoring")
+@tree.command(name="start", description="Démarrer monitoring")
 async def start(interaction: discord.Interaction):
     global monitoring
 
@@ -197,38 +196,15 @@ async def start(interaction: discord.Interaction):
     await interaction.response.send_message("🟢 Monitoring ON")
 
 
-@tree.command(name="stop", description="Arrêter le monitoring")
+@tree.command(name="stop", description="Arrêter monitoring")
 async def stop(interaction: discord.Interaction):
     global monitoring
-
     monitoring = False
     await interaction.response.send_message("🔴 Monitoring OFF")
 
 
-@tree.command(name="test", description="Tester le bot")
-async def test(interaction: discord.Interaction):
-    global monitoring
-
-    try:
-        status = server.status()
-
-        await interaction.response.send_message(
-            f"🟢 Bot OK\n"
-            f"🌐 Serveur OK\n"
-            f"👥 Joueurs : {status.players.online}\n"
-            f"📡 Monitoring : {'ON' if monitoring else 'OFF'}"
-        )
-
-    except:
-        await interaction.response.send_message(
-            f"🟢 Bot OK\n"
-            f"🔴 Serveur OFF\n"
-            f"📡 Monitoring : {'ON' if monitoring else 'OFF'}"
-        )
-
-
 # =========================
-# 🚀 READY
+# READY
 # =========================
 @client.event
 async def on_ready():
@@ -237,8 +213,6 @@ async def on_ready():
     guild = discord.Object(id=GUILD_ID)
     tree.copy_global_to(guild=guild)
     await tree.sync(guild=guild)
-
-    print("Commandes synchronisées")
 
     ch = await client.fetch_channel(CHANNEL_ID)
     await ch.send("✅ Bot online")
