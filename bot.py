@@ -68,6 +68,7 @@ async def monitor():
         try:
             status = server.status()
 
+            # serveur revient en ligne
             if server_offline:
                 await channel.send("🟢 Serveur Minecraft de nouveau en ligne")
                 server_offline = False
@@ -78,15 +79,31 @@ async def monitor():
             joined = current_players - last_players
             left = last_players - current_players
 
+            # 🟢 connexions
             if joined:
-                await channel.send(f"🟢 Connecté(s) : {', '.join(joined)}")
+                await channel.send(
+                    f"🟢 **Joueur(s) connecté(s)** : {', '.join(joined)}\n"
+                    f"👥 Joueurs actuellement : {current_count}"
+                )
+
+            # 🔴 déconnexions
             if left:
-                await channel.send(f"🔴 Déconnecté(s) : {', '.join(left)}")
+                await channel.send(
+                    f"🔴 **Joueur(s) déconnecté(s)** : {', '.join(left)}\n"
+                    f"👥 Joueurs actuellement : {current_count}"
+                )
 
             last_players = current_players
 
+            # 🕛 message quotidien
+            now = datetime.now()
+            if now.hour == 12 and (last_daily is None or last_daily != now.date()):
+                await channel.send("🟢 Bot toujours actif (check quotidien)")
+                last_daily = now.date()
+
         except Exception as e:
-            print("Erreur serveur :", e)
+            print("Erreur serveur Minecraft :", e)
+
             if not server_offline:
                 await channel.send("🔴 Serveur Minecraft inaccessible")
                 server_offline = True
