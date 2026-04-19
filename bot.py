@@ -2,7 +2,7 @@ import os
 import discord
 import asyncio
 import aiohttp
-from datetime import datetime, date
+from datetime import datetime
 from mcstatus import JavaServer
 
 TOKEN = os.getenv("TOKEN")
@@ -26,12 +26,10 @@ last_daily = None
 server_offline = False
 monitoring = False
 
-track_message = None
-
-# 🔥 historique positions + distance journalière
+# 👇 SYSTEME PAR JOUEUR
+player_messages = {}
 player_history = {}
-player_daily_distance = {}
-current_day = date.today()
+player_last_data = {}
 
 
 # =========================
@@ -45,7 +43,7 @@ async def get_players():
 
 
 # =========================
-# 🌍 WORLD NAME
+# 🌍 WORLD
 # =========================
 def get_world_name(world):
     if world == "minecraft_overworld":
@@ -55,15 +53,6 @@ def get_world_name(world):
     elif world == "minecraft_the_end":
         return "🌌 End"
     return f"❓ {world}"
-
-
-# =========================
-# ⏰ RESET JOURNALIER
-# =========================
-def reset_daily():
-    global player_history, player_daily_distance
-    player_history = {}
-    player_daily_distance = {}
 
 
 # =========================
@@ -96,13 +85,8 @@ async def monitor():
 
             last_players = current_players
 
-            now = datetime.now()
-            if now.hour == 12 and (last_daily is None or last_daily != now.date()):
-                await channel.send("🟢 Bot toujours actif (check quotidien)")
-                last_daily = now.date()
-
         except Exception as e:
-            print("Erreur serveur Minecraft :", e)
+            print("Erreur serveur :", e)
             if not server_offline:
                 await channel.send("🔴 Serveur Minecraft inaccessible")
                 server_offline = True
@@ -111,71 +95,82 @@ async def monitor():
 
 
 # =========================
-# 📍 TRACK POSITIONS + DISTANCE JOURNALIÈRE
+# 📍 TRACK PAR JOUEUR (AMÉLIORÉ)
 # =========================
 async def monitor_positions():
-    global track_message, monitoring, current_day
+    global monitoring
 
     await client.wait_until_ready()
     track_channel = await client.fetch_channel(TRACK_CHANNEL_ID)
 
     while monitoring:
         try:
-            # 🔥 reset jour
-            if date.today() != current_day:
-                current_day = date.today()
-                reset_daily()
-
             players = await get_players()
+            active_names = set()
 
-            content = "📍 **Tracking joueurs (jour)**\n\n"
+            for p in players:
+                name = p["name"]
+                active_names.add(name)
 
-            if not players:
-                content += "Aucun joueur"
-            else:
-                for p in players:
-                    name = p["name"]
-                    x, y, z = p["x"], p["y"], p["z"]
-                    health = p.get("health", "?")
-                    armor = p.get("armor", "?")
-                    world = get_world_name(p.get("world", "unknown"))
+                x, y, z = p["x"], p["y"], p["z"]
+                health = p.get("health", "?")
+                armor = p.get("armor", "?")
+                world = get_world_name(p.get("world", "unknown"))
 
-                    # init
-                    if name not in player_history:
-                        player_history[name] = []
-                        player_daily_distance[name] = 0
+                # init
+                if name not in player_history:
+                    player_history[name] = []
 
-                    hist = player_history[name]
+                hist = player_history[name]
 
-                    # ajouter point
-                    hist.append((x, z))
+                # ajout position
+                hist.append((x, z))
 
-                    if len(hist) > 100:
-                        hist.pop(0)
+                if len(hist) > 100:
+                    hist.pop(0)
 
-                    # calcul distance (incremental propre)
-                    if len(hist) >= 2:
-                        x1, z1 = hist[-2]
-                        x2, z2 = hist[-1]
-                        player_daily_distance[name] += ((x2 - x1)**2 + (z2 - z1)**2) ** 0.5
+                # distance journalière simple
+                distance = 0
+                for i in range(len(hist)-1):
+                    x1, z1 = hist[i]
+                    x2, z2 = hist[i+1]
+                    distance += ((x2-x1)**2 + (z2-z1)**2) ** 0.5
 
-                    content += (
-                        f"🧑 **{name}**\n"
-                        f"🌍 {world}\n"
-                        f"📍 {x} / {y} / {z}\n"
-                        f"❤️ {health} | 🛡 {armor}\n"
-                        f"📏 Distance jour : {int(player_daily_distance[name])} blocs\n\n"
-                    )
+                content = (
+                    f"🧑 **{name}**\n"
+                    f"🌍 {world}\n"
+                    f"📍 {x} / {y} / {z}\n"
+                    f"❤️ {health} | 🛡 {armor}\n"
+                    f"📏 Distance : {int(distance)} blocs"
+                )
 
-            if track_message is None:
-                track_message = await track_channel.send(content)
-            else:
-                await track_message.edit(content=content)
+                # CREATE OR UPDATE MESSAGE
+                if name not in player_messages:
+                    msg = await track_channel.send(content)
+                    player_messages[name] = msg
+                    player_last_data[name] = content
+                else:
+                    if player_last_data[name] != content:
+                        await player_messages[name].edit(content=content)
+                        player_last_data[name] = content
+
+            # suppression joueurs offline
+            for name in list(player_messages.keys()):
+                if name not in active_names:
+                    try:
+                        await player_messages[name].edit(
+                            content=f"🔴 **{name} hors ligne**"
+                        )
+                    except:
+                        pass
+
+                    del player_messages[name]
+                    del player_last_data[name]
 
         except Exception as e:
             print("Erreur tracking :", e)
 
-        await asyncio.sleep(10)
+        await asyncio.sleep(5)
 
 
 # =========================
@@ -201,6 +196,19 @@ async def stop(interaction: discord.Interaction):
     global monitoring
     monitoring = False
     await interaction.response.send_message("🔴 Monitoring OFF")
+
+
+@tree.command(name="test", description="Tester bot")
+async def test(interaction: discord.Interaction):
+    try:
+        status = server.status()
+        await interaction.response.send_message(
+            f"🟢 OK\n🌐 Serveur OK\n👥 Joueurs : {status.players.online}\n📡 Monitoring : {'ON' if monitoring else 'OFF'}"
+        )
+    except:
+        await interaction.response.send_message(
+            f"🟢 Bot OK\n🔴 Serveur OFF\n📡 Monitoring : {'ON' if monitoring else 'OFF'}"
+        )
 
 
 # =========================
