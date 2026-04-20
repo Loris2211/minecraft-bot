@@ -55,11 +55,11 @@ async def get_players():
 # =========================
 def get_world_name(world):
     if world == "minecraft_overworld":
-        return "🌍 Overworld"
+        return "Overworld 🌍"
     elif world == "minecraft_the_nether":
-        return "🔥 Nether"
+        return "Nether 🔥"
     elif world == "minecraft_the_end":
-        return "🌌 End"
+        return "End 🌌"
     else:
         return f"❓ {world}"
 
@@ -207,7 +207,7 @@ async def monitor_positions():
 # =========================
 @tree.command(name="start", description="Démarrer le monitoring")
 async def start(interaction: discord.Interaction):
-    global monitoring, tasks_started
+    global monitoring
 
     if monitoring:
         await interaction.response.send_message("⚠️ Déjà actif", ephemeral=True)
@@ -215,10 +215,9 @@ async def start(interaction: discord.Interaction):
 
     monitoring = True
 
-    if not tasks_started:
-        client.loop.create_task(monitor())
-        client.loop.create_task(monitor_positions())
-        tasks_started = True
+    # 🔥 relance toujours les boucles
+    client.loop.create_task(monitor())
+    client.loop.create_task(monitor_positions())
 
     await interaction.response.send_message("🟢 Monitoring ON")
 
