@@ -124,7 +124,7 @@ async def monitor():
 # 📍 TRACK POSITIONS
 # =========================
 async def monitor_positions():
-    global track_message, monitoring
+    global monitoring
 
     await client.wait_until_ready()
     track_channel = await client.fetch_channel(TRACK_CHANNEL_ID)
@@ -132,14 +132,13 @@ async def monitor_positions():
     while monitoring:
         try:
             players = await get_players()
+            current_names = set()
 
-            content = "📍 **Tracking joueurs (live)**\n\n"
-
-            if not players:
-                content += "Aucun joueur"
-            else:
+            if players:
                 for p in players:
                     name = p.get("name")
+                    current_names.add(name)
+
                     x = p.get("x")
                     y = p.get("y")
                     z = p.get("z")
@@ -147,7 +146,7 @@ async def monitor_positions():
                     armor = p.get("armor", "?")
                     world = get_world_name(p.get("world", "unknown"))
 
-                    # historique
+                    # 🔥 historique
                     if name not in player_history:
                         player_history[name] = []
 
@@ -156,7 +155,7 @@ async def monitor_positions():
                     if len(player_history[name]) > 50:
                         player_history[name].pop(0)
 
-                    # distance
+                    # 📏 distance
                     distance = 0
                     hist = player_history[name]
 
@@ -165,23 +164,40 @@ async def monitor_positions():
                         x2, z2, _ = hist[i + 1]
                         distance += ((x2 - x1) ** 2 + (z2 - z1) ** 2) ** 0.5
 
-                    content += (
+                    content = (
                         f"🧑 **{name}**\n"
                         f"🌍 Monde : {world}\n"
                         f"📍 {x} / {y} / {z}\n"
                         f"❤️ {health} | 🛡 {armor}\n"
                         f"📏 Distance : {int(distance)} blocs\n"
-                        f"🕒 Points : {len(hist)}\n\n"
+                        f"🕒 Points : {len(hist)}"
                     )
 
-            # 🔥 FIX MESSAGE (anti erreur 10008)
-            if track_message is None:
-                track_message = await track_channel.send(content)
-            else:
+                    # 🔥 créer ou update message joueur
+                    if name not in player_messages:
+                        msg = await track_channel.send(content)
+                        player_messages[name] = msg
+                    else:
+                        try:
+                            await player_messages[name].edit(content=content)
+                        except:
+                            msg = await track_channel.send(content)
+                            player_messages[name] = msg
+
+            # 🔴 SUPPRIMER messages des joueurs déco
+            to_remove = [name for name in player_messages if name not in current_names]
+
+            for name in to_remove:
                 try:
-                    await track_message.edit(content=content)
+                    await player_messages[name].delete()
                 except:
-                    track_message = await track_channel.send(content)
+                    pass
+
+                del player_messages[name]
+
+                # reset historique si tu veux (optionnel)
+                if name in player_history:
+                    del player_history[name]
 
         except Exception:
             traceback.print_exc()
