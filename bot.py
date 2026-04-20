@@ -2,6 +2,7 @@ import os
 import discord
 import asyncio
 import aiohttp
+import traceback
 from datetime import datetime
 from mcstatus import JavaServer
 
@@ -19,25 +20,34 @@ intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 tree = discord.app_commands.CommandTree(client)
 
+# =========================
+# VARIABLES
+# =========================
 last_players = set()
 channel = None
 
 last_daily = None
 server_offline = False
 monitoring = False
+tasks_started = False
 
 track_message = None
 player_history = {}
 
 
 # =========================
-# 📡 GET PLAYERS DATA
+# 📡 GET PLAYERS DATA (SAFE)
 # =========================
 async def get_players():
-    async with aiohttp.ClientSession() as session:
-        async with session.get(SQUAREMAP_URL) as resp:
-            data = await resp.json()
-            return data.get("players", [])
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(SQUAREMAP_URL) as resp:
+                if resp.status != 200:
+                    return []
+                data = await resp.json()
+                return data.get("players", [])
+    except:
+        return []
 
 
 # =========================
@@ -67,9 +77,9 @@ async def monitor():
         try:
             status = server.status()
 
-            # 🔴 serveur offline -> @everyone
+            # 🟢 serveur revient
             if server_offline:
-                await channel.send("@everyone 🔴 Serveur Minecraft inaccessible ou hors ligne")
+                await channel.send("@everyone 🟢 Serveur Minecraft de nouveau en ligne")
                 server_offline = False
 
             current_players = {p.name for p in (status.players.sample or [])}
@@ -78,14 +88,14 @@ async def monitor():
             joined = current_players - last_players
             left = last_players - current_players
 
-            # 🟢 JOIN -> @everyone
+            # 🟢 JOIN
             if joined:
                 await channel.send(
                     f"@everyone 🟢 **Connecté(s)** : {', '.join(joined)}\n"
                     f"👥 Joueurs : {current_count}"
                 )
 
-            # 🔴 LEAVE -> @everyone
+            # 🔴 LEAVE
             if left:
                 await channel.send(
                     f"@everyone 🔴 **Déconnecté(s)** : {', '.join(left)}\n"
@@ -94,7 +104,7 @@ async def monitor():
 
             last_players = current_players
 
-            # 🕛 daily check -> @here
+            # 🕛 daily check
             now = datetime.now()
             if now.hour == 12 and (last_daily is None or last_daily != now.date()):
                 await channel.send("@here 🟢 Bot toujours actif (check quotidien)")
@@ -164,31 +174,38 @@ async def monitor_positions():
                         f"🕒 Points : {len(hist)}\n\n"
                     )
 
+            # 🔥 FIX MESSAGE (anti erreur 10008)
             if track_message is None:
                 track_message = await track_channel.send(content)
             else:
-                await track_message.edit(content=content)
+                try:
+                    await track_message.edit(content=content)
+                except:
+                    track_message = await track_channel.send(content)
 
-        except Exception as e:
-            print("Erreur tracking :", e)
+        except Exception:
+            traceback.print_exc()
 
         await asyncio.sleep(10)
 
 
 # =========================
-# 🔥 COMMANDS
+# 🔥 COMMANDES
 # =========================
 @tree.command(name="start", description="Démarrer le monitoring")
 async def start(interaction: discord.Interaction):
-    global monitoring
+    global monitoring, tasks_started
 
     if monitoring:
         await interaction.response.send_message("⚠️ Déjà actif", ephemeral=True)
         return
 
     monitoring = True
-    client.loop.create_task(monitor())
-    client.loop.create_task(monitor_positions())
+
+    if not tasks_started:
+        client.loop.create_task(monitor())
+        client.loop.create_task(monitor_positions())
+        tasks_started = True
 
     await interaction.response.send_message("🟢 Monitoring ON")
 
