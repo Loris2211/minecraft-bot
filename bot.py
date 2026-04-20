@@ -31,12 +31,12 @@ server_offline = False
 monitoring = False
 tasks_started = False
 
-track_message = None
 player_history = {}
+player_messages = {}  # 🔥 FIX IMPORTANT
 
 
 # =========================
-# 📡 GET PLAYERS DATA (SAFE)
+# 📡 GET PLAYERS DATA
 # =========================
 async def get_players():
     try:
@@ -77,7 +77,6 @@ async def monitor():
         try:
             status = server.status()
 
-            # 🟢 serveur revient
             if server_offline:
                 await channel.send("@everyone 🟢 Serveur Minecraft de nouveau en ligne")
                 server_offline = False
@@ -88,14 +87,12 @@ async def monitor():
             joined = current_players - last_players
             left = last_players - current_players
 
-            # 🟢 JOIN
             if joined:
                 await channel.send(
                     f"@everyone 🟢 **Connecté(s)** : {', '.join(joined)}\n"
                     f"👥 Joueurs : {current_count}"
                 )
 
-            # 🔴 LEAVE
             if left:
                 await channel.send(
                     f"@everyone 🔴 **Déconnecté(s)** : {', '.join(left)}\n"
@@ -104,7 +101,6 @@ async def monitor():
 
             last_players = current_players
 
-            # 🕛 daily check
             now = datetime.now()
             if now.hour == 12 and (last_daily is None or last_daily != now.date()):
                 await channel.send("@here 🟢 Bot toujours actif (check quotidien)")
@@ -137,6 +133,11 @@ async def monitor_positions():
             if players:
                 for p in players:
                     name = p.get("name")
+
+                    # 🔥 sécurité
+                    if not name:
+                        continue
+
                     current_names.add(name)
 
                     x = p.get("x")
@@ -146,7 +147,6 @@ async def monitor_positions():
                     armor = p.get("armor", "?")
                     world = get_world_name(p.get("world", "unknown"))
 
-                    # 🔥 historique
                     if name not in player_history:
                         player_history[name] = []
 
@@ -155,7 +155,6 @@ async def monitor_positions():
                     if len(player_history[name]) > 50:
                         player_history[name].pop(0)
 
-                    # 📏 distance
                     distance = 0
                     hist = player_history[name]
 
@@ -173,7 +172,6 @@ async def monitor_positions():
                         f"🕒 Points : {len(hist)}"
                     )
 
-                    # 🔥 créer ou update message joueur
                     if name not in player_messages:
                         msg = await track_channel.send(content)
                         player_messages[name] = msg
@@ -184,8 +182,8 @@ async def monitor_positions():
                             msg = await track_channel.send(content)
                             player_messages[name] = msg
 
-            # 🔴 SUPPRIMER messages des joueurs déco
-            to_remove = [name for name in player_messages if name not in current_names]
+            # 🔴 supprimer joueurs déco OU si aucun joueur
+            to_remove = [n for n in player_messages if n not in current_names]
 
             for name in to_remove:
                 try:
@@ -195,7 +193,6 @@ async def monitor_positions():
 
                 del player_messages[name]
 
-                # reset historique si tu veux (optionnel)
                 if name in player_history:
                     del player_history[name]
 
